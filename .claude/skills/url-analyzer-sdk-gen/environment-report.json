@@ -1,0 +1,105 @@
+{
+  "timestamp": "1775816931.2580726",
+  "platform": "Windows",
+  "python": {
+    "version": "3.12",
+    "pip": true
+  },
+  "node": {
+    "version": "24.12",
+    "npm": "11.6.2"
+  },
+  "browsers": [
+    "edge"
+  ],
+  "missing_python": [],
+  "missing_node": [],
+  "all_ok": true,
+  "details": {
+    "python_version": {
+      "status": "ok",
+      "version": "3.12"
+    },
+    "pip": {
+      "status": "ok"
+    },
+    "py_requests": {
+      "status": "ok",
+      "version": "2.33.0"
+    },
+    "py_DrissionPage": {
+      "status": "ok",
+      "version": "4.1.0.17"
+    },
+    "py_lxml": {
+      "status": "ok",
+      "version": "4.9.4"
+    },
+    "py_beautifulsoup4": {
+      "status": "ok",
+      "version": "4.13.4"
+    },
+    "py_pycryptodome": {
+      "status": "ok",
+      "version": "3.20.0"
+    },
+    "py_pyexecjs2": {
+      "status": "ok",
+      "version": "1.6.1"
+    },
+    "py_loguru": {
+      "status": "ok",
+      "version": "0.7.2"
+    },
+    "py_playwright": {
+      "status": "ok",
+      "version": "1.45.1"
+    },
+    "py_curl_cffi": {
+      "status": "ok",
+      "version": "0.7.4"
+    },
+    "py_ddddocr": {
+      "status": "missing_optional"
+    },
+    "py_selenium": {
+      "status": "ok",
+      "version": "3.141.0"
+    },
+    "py_scrapy": {
+      "status": "missing_optional"
+    },
+    "node_version": {
+      "status": "ok",
+      "version": "24.12"
+    },
+    "npm": {
+      "status": "ok",
+      "version": "11.6.2"
+    },
+    "node_playwright": {
+      "status": "missing_optional"
+    },
+    "node_crypto-js": {
+      "status": "missing_optional"
+    },
+    "node_jsdom": {
+      "status": "missing_optional"
+    },
+    "node_axios": {
+      "status": "missing_optional"
+    },
+    "browser_chrome": {
+      "status": "missing"
+    },
+    "browser_edge": {
+      "status": "ok"
+    },
+    "browser_chromium": {
+      "status": "missing"
+    },
+    "browser_firefox": {
+      "status": "missing"
+    }
+  }
+}
