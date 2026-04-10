@@ -1,0 +1,92 @@
+{
+  "timestamp": "1775825373.2320492",
+  "platform": "Windows",
+  "python": {
+    "version": "3.14",
+    "pip": true
+  },
+  "tools": {
+    "Java JDK": null,
+    "APK解包工具": null,
+    "DEX反编译工具": null,
+    "动态调试框架": null,
+    "Frida服务端": null
+  },
+  "android": {
+    "device": "disconnected",
+    "frida_server": "not_running"
+  },
+  "missing_python": [
+    "frida",
+    "frida-tools",
+    "pycryptodome",
+    "lxml",
+    "beautifulsoup4"
+  ],
+  "missing_tools": [
+    "java",
+    "apktool",
+    "jadx",
+    "frida",
+    "frida-server"
+  ],
+  "all_ok": false,
+  "details": {
+    "pip": {
+      "status": "ok"
+    },
+    "py_frida": {
+      "status": "missing"
+    },
+    "py_frida-tools": {
+      "status": "missing"
+    },
+    "py_pycryptodome": {
+      "status": "missing"
+    },
+    "py_requests": {
+      "status": "ok",
+      "version": "2.31.0"
+    },
+    "py_lxml": {
+      "status": "missing"
+    },
+    "py_beautifulsoup4": {
+      "status": "missing"
+    },
+    "py_loguru": {
+      "status": "ok",
+      "version": "0.7.3"
+    },
+    "py_androguard": {
+      "status": "missing_optional"
+    },
+    "py_apktool-wrapper": {
+      "status": "missing_optional"
+    },
+    "py_jadx-wrapper": {
+      "status": "missing_optional"
+    },
+    "tool_java": {
+      "status": "missing"
+    },
+    "tool_apktool": {
+      "status": "missing"
+    },
+    "tool_jadx": {
+      "status": "missing"
+    },
+    "tool_frida": {
+      "status": "missing"
+    },
+    "tool_frida-server": {
+      "status": "missing"
+    },
+    "android_device": {
+      "status": "disconnected"
+    },
+    "frida_server": {
+      "status": "not_running"
+    }
+  }
+}
