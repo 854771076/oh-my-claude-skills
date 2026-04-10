@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 加密参数检测脚本 V2.0
 分析抓包数据，识别可能的加密参数和签名机制
@@ -8,6 +9,8 @@
 - 增强签名算法识别能力
 - 支持更多编码格式检测
 - 生成更详细的逆向分析建议
+- 修复静态值误判问题（过滤常见HTTP头值）
+- 修复Base64误判问题（增加最小长度和多样性检查）
 
 使用方式:
 python crypto-param-detector.py <api-requests.json路径>
@@ -27,6 +30,11 @@ from urllib.parse import urlparse, parse_qs, unquote, quote
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 from collections import Counter
+
+# 设置标准输出编码（解决Windows终端乱码）
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 
 class CryptoParamDetector:
@@ -321,6 +329,40 @@ class CryptoParamDetector:
             (r'^\d+\.\d+\.\d+$', 'version'),  # 版本号
         ]
 
+        # 常见静态值列表（HTTP头标准值等）
+        static_values = [
+            # Sec-Fetch-* 头的标准值
+            'cors', 'no-cors', 'same-origin', 'navigate', 'nested-navigate',
+            'empty', 'script', 'style', 'image', 'font', 'video', 'audio',
+            'track', 'worker', 'embed', 'object', 'manifest', 'xslt',
+            # Content-Type 常见值
+            'json', 'text', 'html', 'xml', 'form', 'multipart',
+            'application/json', 'text/html', 'text/plain', 'application/xml',
+            'application/x-www-form-urlencoded', 'multipart/form-data',
+            # 其他常见静态值
+            'gzip', 'deflate', 'br', 'identity', '*',
+            'keep-alive', 'close', 'upgrade',
+            'no-cache', 'no-store', 'public', 'private',
+            'strict-origin', 'origin', 'same-site', 'cross-site',
+            'anonymous', 'use-credentials',
+            'allow', 'block', 'same-origin',
+            'unsafe-inline', 'unsafe-eval', 'self', 'none',
+            'GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS',
+            'http', 'https', 'ws', 'wss',
+            'utf-8', 'utf-16', 'iso-8859-1', 'ascii',
+            'en', 'zh', 'zh-cn', 'zh-tw', 'ja', 'ko', 'us', 'cn', 'jp',
+            'desktop', 'mobile', 'tablet', 'web', 'app',
+            'true', 'false', 'null', 'undefined', 'none',
+        ]
+
+        # 检查是否为常见静态值
+        if value.lower() in static_values:
+            return True
+
+        # 检查值长度过短（小于4字符通常不是加密内容）
+        if len(value) < 4:
+            return True
+
         for pattern, _ in static_patterns:
             if re.match(pattern, value, re.I):
                 return True
@@ -501,12 +543,24 @@ class CryptoParamDetector:
 
     def _is_base64(self, value: str) -> bool:
         """检查是否为Base64编码"""
-        if len(value) < 4 or len(value) % 4 != 0:
+        # 最小长度限制：真实的Base64编码内容通常至少16字符
+        if len(value) < 16:
+            return False
+        if len(value) % 4 != 0:
             return False
         if not self.PATTERNS['base64'].match(value):
             return False
+        # 检查是否包含足够的多样性（避免纯字母如 "cors"）
+        has_digit = any(c.isdigit() for c in value)
+        has_upper = any(c.isupper() for c in value)
+        has_lower = any(c.islower() for c in value)
+        if not (has_digit or (has_upper and has_lower)):
+            return False
         try:
-            base64.b64decode(value)
+            decoded = base64.b64decode(value)
+            # 解码后应该有一定长度
+            if len(decoded) < 8:
+                return False
             return True
         except:
             return False

@@ -280,7 +280,9 @@ class DrissionPageCapture:
             if self.check_user_data_availability():
                 user_data = self.user_data_dir or self.get_default_user_data_dir()
                 co.set_user_data_path(user_data)
-                co.auto_port()
+                # co.auto_port()
+                # 注意：auto_port()会创建临时用户数据目录，与set_user_data_path冲突
+                # 使用自定义用户数据目录时不要调用auto_port()
                 logger.info(f"用户数据目录: {user_data}")
                 logger.info(f"Profile: {self.profile_dir}")
                 logger.info("[OK] 用户数据继承成功，将自动加载登录状态")

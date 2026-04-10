@@ -86,7 +86,7 @@ def manual_login(url: str, browser_type: str, user_data_dir: str, headless: bool
 
     # 设置用户数据目录（项目内）
     co.set_user_data_path(user_data_dir)
-    co.auto_port()
+    # co.auto_port()
 
     # 显示浏览器窗口
     if headless:

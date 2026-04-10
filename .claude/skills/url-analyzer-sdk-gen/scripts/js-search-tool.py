@@ -1,11 +1,24 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 JS代码搜索与分析工具
 在JS文件中搜索关键词、提取函数、分析Webpack模块
 
+改进:
+- 支持从JSON数据源(js-files.json)分析JS URL列表
+- 支持下载JS内容进行深度分析
+- 支持仅分析URL模式(不需要下载)
+- 修复Windows终端编码问题
+
 使用方式:
-# 搜索关键词
+# 搜索关键词(本地文件)
 python js-search-tool.py --js-dir "./capture-data/js/" --keywords "encrypt,sign,md5"
+
+# 从JSON数据源分析JS URL
+python js-search-tool.py --js-json "./capture-output/js-files.json" --analyze-urls
+
+# 从JSON数据源下载并分析JS内容
+python js-search-tool.py --js-json "./capture-output/js-files.json" --download --keywords "encrypt,sign"
 
 # 提取函数
 python js-search-tool.py --js-dir "./capture-data/js/" --extract-functions --function-names "getSign"
@@ -19,9 +32,16 @@ import sys
 import json
 import re
 import argparse
+import requests
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from datetime import datetime
+from urllib.parse import urlparse
+
+# 设置标准输出编码（解决Windows终端乱码）
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 
 class JSSearchTool:
@@ -45,39 +65,229 @@ class JSSearchTool:
         r'(\w+)\s*\([^)]*\)\s*\{',  # name() { (可能误报)
     ]
 
-    def __init__(self, js_dir: str):
+    def __init__(self, js_dir: str = None, js_json: str = None):
         """
         初始化
 
         Args:
-            js_dir: JS文件目录
+            js_dir: JS文件目录(本地文件)
+            js_json: JS文件列表JSON(js-files.json格式)
         """
-        self.js_dir = Path(js_dir)
+        self.js_dir = Path(js_dir) if js_dir else None
+        self.js_json = js_json
         self.js_files = []
+        self.js_urls = []  # 从JSON提取的URL列表
+        self.downloaded_contents = {}  # 下载的JS内容缓存
         self.results = {
             'search_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'js_dir': str(js_dir),
+            'js_dir': str(js_dir) if js_dir else None,
+            'js_json': js_json,
             'total_files': 0,
+            'total_urls': 0,
             'total_size': 0,
             'keyword_matches': {},
             'function_extractions': {},
             'webpack_modules': [],
-            'suspicious_functions': []
+            'suspicious_functions': [],
+            'url_analysis': {},  # URL分析结果
+            'download_errors': []
         }
 
     def _load_js_files(self):
         """加载所有JS文件"""
-        if not self.js_dir.exists():
+        if self.js_dir and self.js_dir.exists():
+            # 支持多种扩展名
+            extensions = ['.js', '.mjs', '.cjs', '.ts', '.jsx', '.tsx']
+            for ext in extensions:
+                self.js_files.extend(self.js_dir.glob(f'*{ext}'))
+                self.js_files.extend(self.js_dir.glob(f'**/*{ext}'))
+
+            self.results['total_files'] = len(self.js_files)
+            self.results['total_size'] = sum(f.stat().st_size for f in self.js_files if f.exists())
+        elif self.js_dir and not self.js_dir.exists():
             raise FileNotFoundError(f"JS目录不存在: {self.js_dir}")
 
-        # 支持多种扩展名
-        extensions = ['.js', '.mjs', '.cjs', '.ts', '.jsx', '.tsx']
-        for ext in extensions:
-            self.js_files.extend(self.js_dir.glob(f'*{ext}'))
-            self.js_files.extend(self.js_dir.glob(f'**/*{ext}'))
+    def _load_js_urls_from_json(self):
+        """从JSON文件加载JS URL列表"""
+        if not self.js_json or not os.path.exists(self.js_json):
+            raise FileNotFoundError(f"JS JSON文件不存在: {self.js_json}")
 
-        self.results['total_files'] = len(self.js_files)
-        self.results['total_size'] = sum(f.stat().st_size for f in self.js_files if f.exists())
+        with open(self.js_json, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        # 支持两种JSON格式：
+        # 1. 直接URL列表: ["url1", "url2", ...]
+        # 2. 请求对象列表: [{"url": "url1", ...}, ...]
+        if isinstance(data, list):
+            for item in data:
+                if isinstance(item, str):
+                    self.js_urls.append({'url': item, 'method': 'GET'})
+                elif isinstance(item, dict) and 'url' in item:
+                    self.js_urls.append({
+                        'url': item.get('url', ''),
+                        'method': item.get('method', 'GET'),
+                        'headers': item.get('headers', {}),
+                        'postData': item.get('postData'),
+                        'response': item.get('response', {})
+                    })
+
+        self.results['total_urls'] = len(self.js_urls)
+        print(f"[INFO] 从JSON加载了 {len(self.js_urls)} 个JS URL")
+
+    def _download_js_content(self, max_files: int = 50, timeout: int = 30):
+        """
+        下载JS内容
+
+        Args:
+            max_files: 最大下载文件数
+            timeout: 请求超时时间(秒)
+        """
+        print(f"[INFO] 开始下载JS内容(最多{max_files}个文件)...")
+
+        # 过滤有效的HTTP/HTTPS URL
+        valid_urls = [
+            u for u in self.js_urls
+            if u['url'].startswith('http://') or u['url'].startswith('https://')
+        ]
+
+        # 跳过 chrome:// 等特殊URL
+        valid_urls = [u for u in valid_urls if not u['url'].startswith('chrome://')]
+
+        downloaded_count = 0
+        for url_info in valid_urls[:max_files]:
+            url = url_info['url']
+            try:
+                headers = url_info.get('headers', {})
+                # 移除可能导致问题的头
+                clean_headers = {k: v for k, v in headers.items()
+                                if k.lower() not in ['host', 'content-length', 'accept-encoding']}
+
+                resp = requests.get(url, headers=clean_headers, timeout=timeout)
+                if resp.status_code == 200:
+                    self.downloaded_contents[url] = resp.text
+                    downloaded_count += 1
+                    print(f"[DOWNLOADED] {url[:80]}... ({len(resp.text)} bytes)")
+            except Exception as e:
+                self.results['download_errors'].append({
+                    'url': url,
+                    'error': str(e)
+                })
+                print(f"[ERROR] 下载失败 {url[:50]}...: {e}")
+
+        print(f"[INFO] 成功下载 {downloaded_count}/{min(len(valid_urls), max_files)} 个JS文件")
+        self.results['downloaded_count'] = downloaded_count
+
+    def analyze_urls(self) -> Dict:
+        """
+        分析JS URL模式(不下载内容)
+
+        Returns:
+            URL分析结果
+        """
+        self._load_js_urls_from_json()
+
+        url_patterns = {
+            'webpack': [],
+            'minified': [],
+            'chunk': [],
+            'vendor': [],
+            'lib': [],
+            'components': [],
+            'app': [],
+            'main': [],
+            'other': []
+        }
+
+        for url_info in self.js_urls:
+            url = url_info['url']
+            filename = urlparse(url).path.split('/')[-1] or url
+
+            # 分类URL
+            if 'webpack' in filename.lower() or 'webpack' in url.lower():
+                url_patterns['webpack'].append(url)
+            elif '.min.' in filename or '-min.' in filename:
+                url_patterns['minified'].append(url)
+            elif 'chunk' in filename.lower():
+                url_patterns['chunk'].append(url)
+            elif 'vendor' in filename.lower():
+                url_patterns['vendor'].append(url)
+            elif 'lib' in filename.lower():
+                url_patterns['lib'].append(url)
+            elif 'component' in filename.lower():
+                url_patterns['components'].append(url)
+            elif 'app' in filename.lower():
+                url_patterns['app'].append(url)
+            elif 'main' in filename.lower():
+                url_patterns['main'].append(url)
+            else:
+                url_patterns['other'].append(url)
+
+        # 统计
+        self.results['url_analysis'] = {
+            'patterns': {k: len(v) for k, v in url_patterns.items()},
+            'urls_by_pattern': url_patterns,
+            'domains': self._extract_domains()
+        }
+
+        return self.results['url_analysis']
+
+    def _extract_domains(self) -> Dict:
+        """提取域名统计"""
+        domains = {}
+        for url_info in self.js_urls:
+            url = url_info['url']
+            try:
+                parsed = urlparse(url)
+                domain = parsed.netloc
+                if domain:
+                    domains[domain] = domains.get(domain, 0) + 1
+            except:
+                pass
+        return dict(sorted(domains.items(), key=lambda x: x[1], reverse=True)[:20])
+
+    def search_keywords_from_downloaded(self, keywords: List[str], context_lines: int = 3) -> Dict:
+        """
+        从下载的JS内容搜索关键词
+
+        Args:
+            keywords: 关键词列表
+            context_lines: 上下文行数
+
+        Returns:
+            匹配结果字典
+        """
+        for keyword in keywords:
+            self.results['keyword_matches'][keyword] = {
+                'count': 0,
+                'files': []
+            }
+
+        for url, content in self.downloaded_contents.items():
+            lines = content.split('\n')
+
+            for keyword in keywords:
+                pattern = re.compile(re.escape(keyword), re.IGNORECASE)
+                matches_in_file = []
+
+                for i, line in enumerate(lines):
+                    if pattern.search(line):
+                        start = max(0, i - context_lines)
+                        end = min(len(lines), i + context_lines + 1)
+                        context = {
+                            'line_number': i + 1,
+                            'line': line.strip(),
+                            'context': '\n'.join(lines[start:end])
+                        }
+                        matches_in_file.append(context)
+
+                if matches_in_file:
+                    self.results['keyword_matches'][keyword]['count'] += len(matches_in_file)
+                    self.results['keyword_matches'][keyword]['files'].append({
+                        'file': url,
+                        'matches': matches_in_file
+                    })
+
+        return self.results['keyword_matches']
 
     def _read_file(self, filepath: Path) -> str:
         """读取文件内容"""
@@ -334,19 +544,56 @@ class JSSearchTool:
 def main():
     parser = argparse.ArgumentParser(
         description='JS代码搜索与分析工具',
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例:
+  # 从JSON数据源分析JS URL(不下载)
+  python js-search-tool.py --js-json "./js-files.json" --analyze-urls
+
+  # 从JSON数据源下载并搜索关键词
+  python js-search-tool.py --js-json "./js-files.json" --download --keywords "encrypt,sign"
+
+  # 分析本地JS文件目录
+  python js-search-tool.py --js-dir "./js/" --keywords "encrypt,sign"
+        """
+    )
+
+    # 数据源参数
+    parser.add_argument(
+        '--js-dir', '-d',
+        help='JS文件目录(本地文件)'
     )
 
     parser.add_argument(
-        '--js-dir', '-d',
-        required=True,
-        help='JS文件目录'
+        '--js-json', '-j',
+        help='JS文件列表JSON(js-files.json格式)'
     )
 
+    # 分析模式参数
+    parser.add_argument(
+        '--analyze-urls', '-a',
+        action='store_true',
+        help='分析JS URL模式(不下载内容)'
+    )
+
+    parser.add_argument(
+        '--download', '-D',
+        action='store_true',
+        help='下载JS内容进行分析'
+    )
+
+    parser.add_argument(
+        '--max-download', '-m',
+        type=int,
+        default=50,
+        help='最大下载文件数(默认50)'
+    )
+
+    # 搜索参数
     parser.add_argument(
         '--keywords', '-k',
         default='encrypt,sign,md5,sha,crypto,base64',
-        help='搜索关键词（逗号分隔）'
+        help='搜索关键词(逗号分隔)'
     )
 
     parser.add_argument(
@@ -363,7 +610,7 @@ def main():
 
     parser.add_argument(
         '--function-names', '-f',
-        help='指定要提取的函数名（逗号分隔）'
+        help='指定要提取的函数名(逗号分隔)'
     )
 
     parser.add_argument(
@@ -380,8 +627,14 @@ def main():
 
     args = parser.parse_args()
 
+    # 检查数据源
+    if not args.js_dir and not args.js_json:
+        print("错误: 必须指定 --js-dir 或 --js-json")
+        parser.print_help()
+        sys.exit(1)
+
     # 初始化工具
-    tool = JSSearchTool(args.js_dir)
+    tool = JSSearchTool(js_dir=args.js_dir, js_json=args.js_json)
 
     # 处理关键词
     keywords = []
@@ -390,37 +643,84 @@ def main():
     if args.keywords:
         keywords.extend([k.strip() for k in args.keywords.split(',')])
 
-    # 执行搜索
-    if keywords:
-        print(f"[INFO] 搜索关键词: {keywords}")
-        tool.search_keywords(keywords)
+    # 根据数据源选择分析模式
+    if args.js_json:
+        # JSON数据源模式
+        if args.analyze_urls:
+            print("[INFO] 分析JS URL模式...")
+            url_analysis = tool.analyze_urls()
+            print(f"\n[URL分析结果]")
+            print(f"总URL数: {url_analysis['patterns']}")
+            print(f"\n主要域名:")
+            for domain, count in list(url_analysis['domains'].items())[:10]:
+                print(f"  - {domain}: {count} 个JS文件")
 
-    # 提取函数
-    if args.extract_functions:
-        func_names = [f.strip() for f in args.function_names.split(',')] if args.function_names else None
-        print(f"[INFO] 提取函数: {func_names or '全部'}")
-        tool.extract_functions(func_names)
+        if args.download:
+            print("[INFO] 下载JS内容...")
+            tool._load_js_urls_from_json()
+            tool._download_js_content(max_files=args.max_download)
 
-    # 分析Webpack
-    if args.analyze_webpack:
-        print("[INFO] 分析Webpack模块...")
-        tool.analyze_webpack()
+            if keywords:
+                print(f"[INFO] 搜索关键词: {keywords}")
+                tool.search_keywords_from_downloaded(keywords)
+
+            if args.extract_functions:
+                print("[INFO] 从下载内容提取函数...")
+                # 注意: 需要实现从下载内容提取函数的逻辑
+
+    elif args.js_dir:
+        # 本地文件模式
+        if keywords:
+            print(f"[INFO] 搜索关键词: {keywords}")
+            tool.search_keywords(keywords)
+
+        if args.extract_functions:
+            func_names = [f.strip() for f in args.function_names.split(',')] if args.function_names else None
+            print(f"[INFO] 提取函数: {func_names or '全部'}")
+            tool.extract_functions(func_names)
+
+        if args.analyze_webpack:
+            print("[INFO] 分析Webpack模块...")
+            tool.analyze_webpack()
 
     # 输出结果
     if args.output:
         tool.save_results(args.output)
     else:
-        # 打印报告
+        # 打印摘要报告
         print("\n" + "="*60)
-        print(tool.generate_report())
+        print("JS代码分析报告")
+        print("="*60)
+        print(f"分析时间: {tool.results['search_time']}")
+        if tool.results.get('total_urls'):
+            print(f"URL总数: {tool.results['total_urls']}")
+            print(f"下载文件: {tool.results.get('downloaded_count', 0)}")
+        if tool.results.get('total_files'):
+            print(f"本地文件: {tool.results['total_files']}")
+            print(f"总大小: {tool.results['total_size'] / 1024:.1f} KB")
 
-    # 输出JSON结果
+        # 关键词匹配摘要
+        if tool.results['keyword_matches']:
+            print("\n关键词匹配:")
+            for kw, data in tool.results['keyword_matches'].items():
+                print(f"  - {kw}: {data['count']} 次匹配")
+
+        # 可疑函数
+        if tool.results['suspicious_functions']:
+            print(f"\n可疑加密函数: {len(tool.results['suspicious_functions'])} 个")
+            for func in tool.results['suspicious_functions'][:10]:
+                print(f"  - {func['name']} ({func['file']})")
+
+    # 输出JSON摘要
     print("\n[JSON SUMMARY]")
     summary = {
-        'total_files': tool.results['total_files'],
+        'total_files': tool.results.get('total_files', 0),
+        'total_urls': tool.results.get('total_urls', 0),
+        'downloaded_count': tool.results.get('downloaded_count', 0),
         'keyword_count': {k: v['count'] for k, v in tool.results['keyword_matches'].items()},
         'suspicious_functions_count': len(tool.results['suspicious_functions']),
-        'webpack_files_count': len(tool.results['webpack_modules'])
+        'webpack_files_count': len(tool.results['webpack_modules']),
+        'download_errors': len(tool.results.get('download_errors', []))
     }
     print(json.dumps(summary, indent=2))
 
