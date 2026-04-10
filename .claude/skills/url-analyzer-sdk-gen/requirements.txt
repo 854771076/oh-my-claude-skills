@@ -1,0 +1,53 @@
+# URL Analyzer SDK Generator - Python Dependencies
+# 爬虫逆向常用库
+
+# ========== 基础网络请求 ==========
+requests>=2.31.0           # requests库，爬虫的开始
+curl_cffi>=0.5.10          # 标准tls请求库，模拟浏览器TLS指纹
+httpx>=0.25.0              # 现代HTTP客户端，支持HTTP/2
+aiohttp>=3.9.0             # 异步HTTP客户端
+
+# ========== 数据解析 ==========
+lxml>=4.9.0                # xpath提取数据
+beautifulsoup4>=4.12.0     # HTML解析
+parsel>=1.8.0              # CSS选择器解析
+
+# ========== 自动化框架 ==========
+playwright>=1.40.0         # 自动化需要（推荐）
+selenium>=4.15.0           # 自动化需要，推荐playwright
+DrissionPage>=4.0.0        # 结合requests和selenium的优点
+
+# ========== 爬虫框架 ==========
+scrapy>=2.11.0             # 爬虫框架
+# feapder[all]>=1.8.0      # 新一代爬虫框架（取消注释启用）
+
+# ========== 加密与编解码 ==========
+pycryptodome>=3.19.0       # Python标准密码库
+pyexecjs2>=1.0.0           # Python调用JS代码
+pyjsparser>=2.7.1          # JavaScript解析器
+
+# ========== 验证码识别 ==========
+ddddocr>=1.4.7             # 识别验证码
+opencv-python>=4.8.0       # 图像处理
+Pillow>=10.0.0             # 图像处理
+
+# ========== 媒体处理 ==========
+m3u8>=4.0.0                # 下载m3u8视频
+
+# ========== 数据处理 ==========
+prettytable>=3.9.0         # 格式化输出
+pandas>=2.1.0              # 数据处理
+openpyxl>=3.1.0            # Excel处理
+
+# ========== 工具库 ==========
+tqdm>=4.66.0               # 进度条
+loguru>=0.7.0              # 强大的日志工具库
+retrying>=1.3.4            # 强大的重试工具
+fake-useragent>=1.4.0      # 随机User-Agent
+
+# ========== 代理与反爬 ==========
+pysocks>=1.7.1             # SOCKS代理支持
+
+# ========== 开发工具 ==========
+ipython>=8.18.0            # 交互式Python
+pytest>=7.4.0              # 测试框架

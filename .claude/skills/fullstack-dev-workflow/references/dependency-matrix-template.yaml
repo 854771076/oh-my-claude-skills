@@ -1,0 +1,75 @@
+# 全链路文档依赖关联矩阵模板
+
+```yaml
+# 全链路文档依赖关联矩阵
+matrix_version: "v2.1.0"
+project_version: "【自动同步version.json中的当前版本】"
+last_updated: "【自动填充时间戳】"
+latest_change_no: "【自动关联最新变更单号】"
+
+# 核心依赖关系列表
+dependency_list:
+  - demand_id: "REQ-【模块编码】-【序号】" # 唯一需求ID，不可重复
+    demand_doc_path: "【需求文档相对路径】"
+    # 强依赖文档：需求变更必须按优先级同步更新
+    strong_dependency:
+      - doc_type: "SRS"
+        doc_path: "docs/00-requirements/srs.md"
+        update_priority: 1 # 优先级1最高，严格按顺序更新
+      - doc_type: "领域模型设计"
+        doc_path: "【对应文档相对路径】"
+        update_priority: 2
+      - doc_type: "数据库设计"
+        doc_path: "【对应文档相对路径】"
+        update_priority: 3
+      - doc_type: "接口设计"
+        doc_path: "【对应文档相对路径】"
+        update_priority: 4
+      - doc_type: "页面设计"
+        doc_path: "【对应文档相对路径】"
+        update_priority: 5
+      - doc_type: "测试用例"
+        doc_path: "【对应文档相对路径】"
+        update_priority: 6
+    # 弱依赖文档：需求变更仅需校验兼容性
+    weak_dependency:
+      - doc_type: "全局设计规范"
+        doc_path: "docs/02-frontend-design/design-system.md"
+      - doc_type: "系统架构总览"
+        doc_path: "docs/01-architecture/system-architecture.md"
+    # 关联代码模块，变更时同步校验
+    related_code_module:
+      - path: "【对应代码模块相对路径】"
+    # 需同步更新的索引文档清单
+    index_update_list:
+      - "【对应索引文档相对路径】"
+```
+
+## 依赖类型说明
+
+### 强依赖 (strong_dependency)
+上游文档变更后，下游文档**必须同步更新**，否则会出现逻辑矛盾。
+
+**示例**：
+- PRD变更 → SRS、接口设计、页面设计必须更新
+- 数据库字段变更 → 相关接口设计必须更新
+
+### 弱依赖 (weak_dependency)
+上游文档变更后，下游文档**仅需校验兼容性**，无需强制修改。
+
+**示例**：
+- 全局设计规范微调 → 非相关页面仅需校验兼容性
+- 系统架构微调 → 具体模块设计仅需确认兼容
+
+## 更新优先级规则
+
+必须严格按照 `update_priority` 从高到低依次更新：
+
+| 优先级 | 文档类型 | 说明 |
+|--------|----------|------|
+| 1 | SRS | 软件需求规格，需求变更首先同步 |
+| 2 | 领域模型设计 | 业务逻辑变更同步 |
+| 3 | 数据库设计 | 数据结构变更同步 |
+| 4 | 接口设计 | 接口入参出参变更同步 |
+| 5 | 页面设计 | 前端交互变更同步 |
+| 6 | 测试用例 | 测试场景变更同步 |

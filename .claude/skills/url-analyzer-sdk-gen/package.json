@@ -1,0 +1,34 @@
+{
+  "name": "url-analyzer-sdk-gen",
+  "version": "2.0.0",
+  "description": "URL分析SDK生成器 - 逆向分析工具集",
+  "main": "index.js",
+  "scripts": {
+    "capture": "node scripts/playwright-capture.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "crawler",
+    "reverse-engineering",
+    "sdk-generator",
+    "hook",
+    "playwright"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "crypto-js": "^4.2.0",
+    "jsdom": "^23.0.0",
+    "tough-cookie": "^4.1.3",
+    "playwright": "^1.40.0",
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0-rc.12"
+  },
+  "devDependencies": {
+    "prettier": "^3.1.0",
+    "eslint": "^8.54.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
