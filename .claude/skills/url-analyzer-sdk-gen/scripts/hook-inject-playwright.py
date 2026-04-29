@@ -260,10 +260,12 @@ class PlaywrightHookInjector:
         # 保存数据
         self._save_data()
 
+        analysis = self._analyze_intercept_data()
         return {
             'intercept_data': self.intercept_data,
             'console_logs': self.console_logs,
             'network_logs': self.network_logs,
+            'keyword_matches': analysis.get('keyword_matches', []),
             'url': url
         }
 
@@ -344,26 +346,51 @@ class PlaywrightHookInjector:
 
     def _analyze_intercept_data(self) -> dict:
         """分析拦截数据"""
+        keywords = self.options.get('keywords', [])
+
         analysis = {
             'summary': {
                 'total_count': len(self.intercept_data),
                 'console_count': len(self.console_logs),
                 'network_count': len(self.network_logs),
-                'types_count': {}
+                'types_count': {},
+                'keywords': keywords,
+                'keyword_matches': 0
             },
             'xhr_requests': [],
             'fetch_requests': [],
             'crypto_operations': [],
             'cookie_operations': [],
             'json_operations': [],
+            'keyword_matches': [],
             'hook_console': [],
             'other': []
         }
+
+        def item_contains_keyword(item, keyword: str) -> bool:
+            """检查item中是否包含关键词"""
+            kw_lower = keyword.lower()
+            # 检查type
+            if kw_lower in item.get('type', '').lower():
+                return True
+            # 检查data字段
+            data_str = json.dumps(item.get('data', {}), ensure_ascii=False).lower()
+            if kw_lower in data_str:
+                return True
+            return False
 
         # 分析Hook拦截数据
         for item in self.intercept_data:
             type_name = item.get('type', 'unknown')
             analysis['summary']['types_count'][type_name] = analysis['summary']['types_count'].get(type_name, 0) + 1
+
+            # 关键词匹配
+            matched_keywords = [k for k in keywords if item_contains_keyword(item, k)]
+            if matched_keywords:
+                item_copy = dict(item)
+                item_copy['_matched_keywords'] = matched_keywords
+                analysis['keyword_matches'].append(item_copy)
+                analysis['summary']['keyword_matches'] += 1
 
             # 分类存储
             if type_name.startswith('xhr'):
@@ -498,7 +525,8 @@ def main():
         'wait_time': args.wait,
         'browser_type': args.browser,
         'user_data_dir': args.user_data_dir,
-        'hooks_dir': args.hook_dir
+        'hooks_dir': args.hook_dir,
+        'keywords': [k.strip() for k in args.keywords.split(',')] if args.keywords else []
     }
 
     # 执行Hook注入
@@ -532,6 +560,15 @@ def main():
         print("\n  Hook Console日志（最近10条）:")
         for log in hook_logs[-10:]:
             print(f"    [{log['type']}] {log['text'][:100]}")
+
+    # 关键词匹配结果
+    if args.keywords and result.get('keyword_matches'):
+        print(f"\n  关键词匹配结果 ({len(result['keyword_matches'])} 条):")
+        for match in result['keyword_matches'][:10]:  # 最多显示10条
+            matched = ', '.join(match.get('_matched_keywords', []))
+            print(f"    - [{matched}] {match.get('type', 'unknown')}")
+        if len(result['keyword_matches']) > 10:
+            print(f"      ... 还有 {len(result['keyword_matches']) - 10} 条匹配结果")
 
     print("="*60)
     print(f"\n[OUTPUT] 拦截数据: {args.output}/intercept/hook-data.json")

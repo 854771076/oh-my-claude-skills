@@ -180,6 +180,7 @@ url-analyzer-sdk-gen/
 | V1.0 | 2026-04-09 | 初始审计报告 |
 | V2.0 | 2026-04-09 | 完成所有改进项，更新审计报告 |
 | V2.1 | 2026-04-09 | 优化浏览器选择配置，DrissionPage和Playwright都支持Chrome/Edge选择 |
+| V3.0 | 2026-04-09 | 修复init-workspace脚本遗漏Hook注入脚本问题，修复关键词参数实现 |
 
 ---
 
@@ -219,3 +220,38 @@ url-analyzer-sdk-gen/
   }
 }
 ```
+
+---
+
+## 七、2026-04-09 审计问题修复记录
+
+### 7.1 init-workspace脚本遗漏Hook注入脚本 [已修复]
+
+**问题**: `init-workspace.py` 的`_copy_scripts_to_workspace`方法中遗漏了以下脚本的复制:
+- `hook-inject-drissionpage.py`
+- `hook-inject-playwright.py`
+- `manual-login.py`
+- `check-environment.py`
+
+**修复**:
+1. 在`scripts_to_copy`列表中添加了上述4个脚本
+2. 同步更新`workspace-structure.md`文档，添加`check-environment.py`说明
+
+**影响**: 初始化工作目录时，Hook注入调试脚本和手动登录脚本会被正确复制到项目中。
+
+### 7.2 Hook脚本--keywords参数死代码 [已修复]
+
+**问题**: `hook-inject-drissionpage.py` 和 `hook-inject-playwright.py` 中都定义了`--keywords`参数，但从未实际使用，属于死代码。
+
+**修复**:
+1. 实现`item_contains_keyword()`辅助函数检测关键词匹配
+2. 在`_analyze_intercept_data()`方法中添加关键词匹配逻辑
+3. 在返回结果中添加`keyword_matches`字段，包含匹配的条目和匹配的关键词
+4. 在控制台输出中展示关键词匹配结果（最多10条）
+5. 在analysis.json中记录关键词和匹配数量
+
+### 7.3 tech-dependencies.md文档错别字 [已修复]
+
+**问题**: 文档中"网络请求"写成了"络请求"
+
+**修复**: 修正了拼写错误

@@ -21,6 +21,7 @@
     │       ├── sign-functions.json
     │       └── crypto-keywords.json
     ├── scripts/                    # 逆向分析脚本（自动复制）
+    │   ├── check-environment.py    # 环境检测与自动安装脚本
     │   ├── drissionpage-capture.py # DrissionPage抓包脚本
     │   ├── playwright-capture.js   # Playwright抓包脚本
     │   ├── hook-inject-drissionpage.py # DrissionPage Hook注入调试脚本

@@ -14,7 +14,7 @@ pip install -r requirements.txt
 | -------- | -------------- | ------------------ |
 | 网络请求 | requests       | 基础HTTP请求       |
 | 网络请求 | curl_cffi      | TLS指纹模拟        |
-| 络请求 | aiohttp        | 异步HTTP           |
+| 网络请求 | aiohttp        | 异步HTTP           |
 | 数据解析 | lxml           | XPath提取          |
 | 数据解析 | beautifulsoup4 | HTML解析           |
 | 自动化   | playwright     | 浏览器自动化(推荐) |

@@ -412,11 +412,15 @@ __fix_random__(timestamp)   // 固定随机变量
 
         # 要复制的脚本文件列表
         scripts_to_copy = [
+            'check-environment.py',
             'drissionpage-capture.py',
             'playwright-capture.js',
             'page-type-detector.py',
             'crypto-param-detector.py',
             'js-search-tool.py',
+            'hook-inject-drissionpage.py',
+            'hook-inject-playwright.py',
+            'manual-login.py',
             'sdk-validator.py',
             'output-templates-generator.py'
         ]
