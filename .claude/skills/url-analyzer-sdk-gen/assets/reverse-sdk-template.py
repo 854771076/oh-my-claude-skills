@@ -35,7 +35,7 @@ REVERSE_SDK_TEMPLATE = '''
 警告: 此SDK基于逆向分析生成，仅供学习研究使用。
 """
 
-import requests
+from curl_cffi import requests  # 模拟浏览器TLS指纹，绕过WAF
 import hashlib
 import hmac
 import base64

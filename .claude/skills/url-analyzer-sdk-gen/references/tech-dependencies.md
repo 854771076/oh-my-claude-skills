@@ -12,8 +12,8 @@ pip install -r requirements.txt
 
 | 类别     | 库             | 用途               |
 | -------- | -------------- | ------------------ |
-| 网络请求 | requests       | 基础HTTP请求       |
-| 网络请求 | curl_cffi      | TLS指纹模拟        |
+| **网络请求** | **curl_cffi** | ⭐ **默认推荐** - 模拟浏览器TLS指纹，绕过WAF |
+| 网络请求 | requests       | 基础HTTP请求（仅备用，容易被拦截） |
 | 网络请求 | aiohttp        | 异步HTTP           |
 | 数据解析 | lxml           | XPath提取          |
 | 数据解析 | beautifulsoup4 | HTML解析           |

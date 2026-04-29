@@ -12,7 +12,6 @@ python init-workspace.py --url "https://example.com/api" --project-root "/path/t
 """
 
 import os
-import sys
 import json
 import argparse
 import re
@@ -20,6 +19,7 @@ import shutil
 from datetime import datetime
 from urllib.parse import urlparse
 from pathlib import Path
+from typing import Any
 
 
 # 获取skill目录路径（脚本所在目录的父目录）
@@ -31,6 +31,7 @@ class WorkspaceInitializer:
 
     # 标准目录结构定义
     DIRECTORY_STRUCTURE = {
+        'browser-data': '浏览器用户数据目录（可选，用于免登录抓包）',
         'capture-data': {
             'har': 'HAR格式完整抓包数据',
             'xhr': 'XHR/Fetch请求JSON数据',
@@ -39,6 +40,9 @@ class WorkspaceInitializer:
         },
         'analysis': {
             'search-results': 'JS搜索结果'
+        },
+        'hook-output': {
+            'intercept': 'Hook拦截分析结果'
         },
         'scripts': '逆向分析脚本（从skill目录复制）',
         'hooks': 'Hook脚本存放目录',
@@ -52,19 +56,26 @@ class WorkspaceInitializer:
         'validation': '验证结果存放目录'
     }
 
-    def __init__(self, url: str, project_root: str = None):
+    def __init__(self, url: str, project_root: str | None = None, preferences: dict[str, Any] | None = None):
         """
         初始化
 
         Args:
             url: 目标URL
             project_root: 项目根目录，默认为当前工作目录
+            preferences: 用户选择的抓包和SDK偏好配置
         """
         self.url = url
         self.project_root = project_root or os.getcwd()
+        self.preferences = preferences or {}
         self.parsed_url = urlparse(url)
         self.site_name = self._extract_site_name()
-        self.workspace_path = None
+        self.workspace_path: str | None = None
+
+    def _require_workspace_path(self) -> str:
+        if self.workspace_path is None:
+            raise RuntimeError("workspace_path 尚未初始化")
+        return self.workspace_path
 
     def _extract_site_name(self) -> str:
         """
@@ -119,7 +130,18 @@ class WorkspaceInitializer:
         """
         创建项目配置文件
         """
-        config = {
+        workspace_path = self._require_workspace_path()
+        browser_data_path = os.path.join(workspace_path, "browser-data")
+        user_preferences = {
+            "capture_tool": self.preferences.get("capture_tool", "drissionpage"),
+            "headless": self.preferences.get("headless", True),
+            "browser_type": self.preferences.get("browser_type", "chrome"),
+            "browser_data_dir": self.preferences.get("browser_data_dir") or browser_data_path,
+            "use_custom_browser_data": self.preferences.get("use_custom_browser_data", False),
+            "login_required": self.preferences.get("login_required", False),
+            "sdk_languages": self.preferences.get("sdk_languages", ["python"])
+        }
+        config: dict[str, Any] = {
             "project_info": {
                 "name": self.site_name,
                 "url": self.url,
@@ -128,20 +150,24 @@ class WorkspaceInitializer:
                 "status": "initialized"
             },
             "paths": {
-                "workspace": self.workspace_path,
-                "capture_data": os.path.join(self.workspace_path, "capture-data"),
-                "analysis": os.path.join(self.workspace_path, "analysis"),
-                "scripts": os.path.join(self.workspace_path, "scripts"),
-                "hooks": os.path.join(self.workspace_path, "hooks"),
-                "output": os.path.join(self.workspace_path, "output"),
-                "validation": os.path.join(self.workspace_path, "validation")
+                "workspace": workspace_path,
+                "browser_data": browser_data_path,
+                "capture_data": os.path.join(workspace_path, "capture-data"),
+                "analysis": os.path.join(workspace_path, "analysis"),
+                "hook_output": os.path.join(workspace_path, "hook-output"),
+                "scripts": os.path.join(workspace_path, "scripts"),
+                "hooks": os.path.join(workspace_path, "hooks"),
+                "output": os.path.join(workspace_path, "output"),
+                "validation": os.path.join(workspace_path, "validation")
             },
             "scripts": {
+                "environment_checker": "scripts/check-environment.py",
                 "drissionpage_capture": "scripts/drissionpage-capture.py",
                 "playwright_capture": "scripts/playwright-capture.js",
                 "page_type_detector": "scripts/page-type-detector.py",
                 "crypto_detector": "scripts/crypto-param-detector.py",
                 "js_search": "scripts/js-search-tool.py",
+                "webpack_module_extractor": "scripts/webpack-module-extractor.py",
                 "sdk_validator": "scripts/sdk-validator.py"
             },
             "url_info": {
@@ -152,9 +178,11 @@ class WorkspaceInitializer:
                 "query": self.parsed_url.query
             },
             "analysis_progress": {
+                "environment_checked": False,
                 "page_type_detected": False,
                 "capture_completed": False,
                 "crypto_analyzed": False,
+                "hook_analyzed": False,
                 "reverse_completed": False,
                 "sdk_generated": False,
                 "validation_passed": False
@@ -163,10 +191,31 @@ class WorkspaceInitializer:
                 "page_type": None,
                 "encrypted_params": [],
                 "crypto_algorithm": None,
-                "sign_logic": None
-            }
+                "sign_logic": None,
+                "key_modules": [],
+                "verification_layers": {
+                    "signature_match": False,
+                    "real_api_ok": False,
+                    "decryption_ok": False
+                }
+            },
+            "user_preferences": user_preferences
         }
         return config
+
+    def _write_text_file(self, file_path: str, content: str, overwrite: bool = True):
+        if not overwrite and os.path.exists(file_path):
+            print(f"[SKIP] 保留现有文件: {file_path}")
+            return
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+
+    def _write_json_file(self, file_path: str, content: dict[str, Any], overwrite: bool = True):
+        if not overwrite and os.path.exists(file_path):
+            print(f"[SKIP] 保留现有文件: {file_path}")
+            return
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(content, f, indent=2, ensure_ascii=False)
 
     def _create_gitignore(self):
         """创建.gitignore文件"""
@@ -192,9 +241,9 @@ __pycache__/
 secrets.json
 .env
 """
-        gitignore_path = os.path.join(self.workspace_path, ".gitignore")
-        with open(gitignore_path, 'w', encoding='utf-8') as f:
-            f.write(gitignore_content)
+        workspace_path = self._require_workspace_path()
+        gitignore_path = os.path.join(workspace_path, ".gitignore")
+        self._write_text_file(gitignore_path, gitignore_content)
 
     def _create_readme(self):
         """创建初始README"""
@@ -208,6 +257,7 @@ secrets.json
 ## 目录结构
 ```
 {self.site_name}/
+├── browser-data/      # 浏览器用户数据（可选）
 ├── capture-data/      # 抓包原始数据
 │   ├── har/           # HAR格式抓包
 │   ├── xhr/           # XHR/Fetch请求JSON
@@ -218,13 +268,17 @@ secrets.json
 │   ├── crypto-analysis.json # 加密参数分析
 │   ├── reverse-notes.md     # 逆向分析笔记
 │   └── search-results/      # JS搜索结果
+├── hook-output/       # Hook拦截结果
+│   └── intercept/     # Hook分析输出
 ├── scripts/           # 逆向分析脚本（可直接使用）
-│   ├── drissionpage-capture.py  # DrissionPage抓包
-│   ├── playwright-capture.js    # Playwright抓包
-│   ├── page-type-detector.py    # 页面类型检测
-│   ├── crypto-param-detector.py # 加密参数检测
-│   ├── js-search-tool.py        # JS关键词搜索
-│   ├── sdk-validator.py         # SDK验证
+│   ├── check-environment.py      # 环境检测
+│   ├── drissionpage-capture.py   # DrissionPage抓包
+│   ├── playwright-capture.js     # Playwright抓包
+│   ├── page-type-detector.py     # 页面类型检测
+│   ├── crypto-param-detector.py  # 加密参数检测
+│   ├── js-search-tool.py         # JS关键词搜索
+│   ├── webpack-module-extractor.py # Webpack模块提取
+│   ├── sdk-validator.py          # SDK验证
 │   └── output-templates-generator.py # 输出模板生成
 ├── hooks/             # Hook脚本
 │   ├── all-in-one-hook.js  # 综合Hook
@@ -244,19 +298,23 @@ secrets.json
 ```
 
 ## 分析进度
+- [ ] 环境检测
 - [ ] 页面类型检测
 - [ ] 网络抓包
 - [ ] 加密参数分析
-- [ ] 逆向分析
+- [ ] Hook调试/模块提取
 - [ ] SDK生成
-- [ ] 验证测试
+- [ ] 三层验证
 
-## 快速开始
+## 推荐工作流
 在项目目录内执行以下命令：
 
 ```bash
 # 进入项目目录
 cd {self.workspace_path}
+
+# 0. 环境检测
+python scripts/check-environment.py --json
 
 # 1. 检测页面类型
 python scripts/page-type-detector.py "{self.url}"
@@ -264,64 +322,39 @@ python scripts/page-type-detector.py "{self.url}"
 # 2. 网络抓包（推荐使用DrissionPage）
 python scripts/drissionpage-capture.py --url "{self.url}" --output "./capture-data"
 
-# 或使用Playwright抓包
-node scripts/playwright-capture.js "{self.url}" "./capture-data"
-
 # 3. 分析加密参数
 python scripts/crypto-param-detector.py capture-data/xhr/api-requests.json
 
 # 4. 搜索JS关键词
-python scripts/js-search-tool.py --js-dir capture-data/js/
+python scripts/js-search-tool.py --js-dir capture-data/js/ --keywords "encrypt,sign,md5,sha,portal-sign"
 
-# 5. 验证SDK
-python scripts/sdk-validator.py --sdk-path output/sdk/python/
+# 5. 提取Webpack模块（先定位签名模块，再追踪依赖模块）
+python scripts/webpack-module-extractor.py capture-data/js/app.js --find-sign-func
+python scripts/webpack-module-extractor.py capture-data/js/app.js --extract-module b775
+python scripts/webpack-module-extractor.py capture-data/js/app.js --extract-module a078
+
+# 6. Hook注入调试（存在加密参数时）
+python scripts/hook-inject-drissionpage.py --url "{self.url}" --hook "all-in-one-hook.js" --output "./hook-output" --wait 30
+
+# 7. 生成SDK后执行真实验证
+python scripts/sdk-validator.py --sdk-path output/sdk/python/ --test-url "{self.url}"
 ```
 
-## DrissionPage抓包选项
-```bash
-# 基本用法
-python scripts/drissionpage-capture.py --url "{self.url}" --output "./capture-data"
-
-# 无头模式（后台运行）
-python scripts/drissionpage-capture.py --url "{self.url}" --output "./capture-data"
-
-# 有头模式（显示浏览器，方便调试）
-python scripts/drissionpage-capture.py --url "{self.url}" --output "./capture-data" --headed
-
-# 使用Edge浏览器
-python scripts/drissionpage-capture.py --url "{self.url}" --output "./capture-data" --browser edge
-
-# 继承用户数据（免登录抓包）
-python scripts/drissionpage-capture.py --url "{self.url}" --output "./capture-data" --user-data-dir "C:/Users/xxx/AppData/Local/Google/Chrome/User Data"
-
-# 不继承用户数据（全新会话）
-python scripts/drissionpage-capture.py --url "{self.url}" --output "./capture-data" --no-user-data
-
-# 查看详细日志
-python scripts/drissionpage-capture.py --url "{self.url}" --output "./capture-data" --verbose
-```
-
-## Hook脚本使用
-Hook脚本用于在浏览器中拦截和分析请求：
-
-```javascript
-// 在浏览器控制台注入 hooks/all-in-one-hook.js
-// 可用命令：
-__hook_export__()           // 导出拦截数据
-__hook_clear__()            // 清空拦截数据
-__hook_set_debug__(bool)    // 开关debugger
-__fix_random__(timestamp)   // 固定随机变量
-```
+## 关键经验
+- 不要默认把签名算法当作 `key=value&key2=value2`，必须按JS源码逐字复现拼接逻辑。
+- 默认优先使用 `curl_cffi` 发起真实请求，避免标准 `requests` 被 WAF/TLS 指纹拦截。
+- Key/IV/Salt 常常不在签名函数所在模块，而在其 `n(\"moduleId\")` 依赖模块中。
+- SDK 只有在 **签名匹配 + 真实API成功 + 解密结果正确** 三层都通过后才算可用。
 
 ## 注意事项
-- 抓包数据可能包含敏感信息，请勿直接提交到公开仓库
-- SDK仅供学习研究使用
-- DrissionPage默认继承Chrome用户数据，实现免登录抓包
-- 如需全新会话，使用 --no-user-data 参数
+- 抓包数据可能包含敏感信息，请勿直接提交到公开仓库。
+- SDK仅供学习研究使用。
+- DrissionPage默认继承Chrome用户数据，实现免登录抓包。
+- 如需全新会话，使用 `--no-user-data` 参数。
 """
-        readme_path = os.path.join(self.workspace_path, "README.md")
-        with open(readme_path, 'w', encoding='utf-8') as f:
-            f.write(readme_content)
+        workspace_path = self._require_workspace_path()
+        readme_path = os.path.join(workspace_path, "README.md")
+        self._write_text_file(readme_path, readme_content, overwrite=False)
 
     def _create_analysis_templates(self):
         """创建分析模板文件"""
@@ -335,8 +368,9 @@ __fix_random__(timestamp)   // 固定随机变量
             "recommendation": None,
             "analyzed_at": None
         }
-        with open(os.path.join(self.workspace_path, "analysis", "page-type.json"), 'w') as f:
-            json.dump(page_type_template, f, indent=2)
+        workspace_path = self._require_workspace_path()
+        page_type_path = os.path.join(workspace_path, "analysis", "page-type.json")
+        self._write_json_file(page_type_path, page_type_template, overwrite=False)
 
         # 加密分析结果模板
         crypto_template = {
@@ -349,8 +383,8 @@ __fix_random__(timestamp)   // 固定随机变量
             "reverse_recommendations": [],
             "analyzed_at": None
         }
-        with open(os.path.join(self.workspace_path, "analysis", "crypto-analysis.json"), 'w') as f:
-            json.dump(crypto_template, f, indent=2)
+        crypto_path = os.path.join(workspace_path, "analysis", "crypto-analysis.json")
+        self._write_json_file(crypto_path, crypto_template, overwrite=False)
 
         # 逆向笔记模板
         reverse_notes = f"""# 逆向分析笔记
@@ -395,8 +429,16 @@ __fix_random__(timestamp)   // 固定随机变量
 ## 最终结论
 
 """
-        with open(os.path.join(self.workspace_path, "analysis", "reverse-notes.md"), 'w') as f:
-            f.write(reverse_notes)
+        reverse_notes_path = os.path.join(workspace_path, "analysis", "reverse-notes.md")
+        self._write_text_file(reverse_notes_path, reverse_notes, overwrite=False)
+
+    def _copy_file_if_missing(self, src_path: Path, dst_path: Path, label: str):
+        if dst_path.exists():
+            print(f"  ├── [SKIP] 保留现有{label}: {dst_path.name}")
+            return False
+        shutil.copy2(src_path, dst_path)
+        print(f"  ├── 复制{label}: {dst_path.name}")
+        return True
 
     def _copy_scripts_to_workspace(self):
         """
@@ -418,6 +460,7 @@ __fix_random__(timestamp)   // 固定随机变量
             'page-type-detector.py',
             'crypto-param-detector.py',
             'js-search-tool.py',
+            'webpack-module-extractor.py',
             'hook-inject-drissionpage.py',
             'hook-inject-playwright.py',
             'manual-login.py',
@@ -431,9 +474,8 @@ __fix_random__(timestamp)   // 固定随机变量
             dst_path = workspace_scripts_dir / script_name
 
             if src_path.exists():
-                shutil.copy2(src_path, dst_path)
-                copied_count += 1
-                print(f"  ├── 复制脚本: {script_name}")
+                if self._copy_file_if_missing(src_path, dst_path, '脚本'):
+                    copied_count += 1
             else:
                 print(f"  ├── [SKIP] 脚本不存在: {script_name}")
 
@@ -465,9 +507,8 @@ __fix_random__(timestamp)   // 固定随机变量
             dst_path = workspace_hooks_dir / hook_name
 
             if src_path.exists():
-                shutil.copy2(src_path, dst_path)
-                copied_count += 1
-                print(f"  ├── 复制Hook: {hook_name}")
+                if self._copy_file_if_missing(src_path, dst_path, 'Hook'):
+                    copied_count += 1
             else:
                 print(f"  ├── [SKIP] Hook不存在: {hook_name}")
 
@@ -501,8 +542,7 @@ __fix_random__(timestamp)   // 固定随机变量
         # 创建配置文件
         config = self._create_project_config()
         config_path = os.path.join(self.workspace_path, "project-config.json")
-        with open(config_path, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2, ensure_ascii=False)
+        self._write_json_file(config_path, config, overwrite=False)
         print(f"\n[CONFIG] 配置文件: {config_path}")
 
         # 创建辅助文件
@@ -520,7 +560,7 @@ __fix_random__(timestamp)   // 固定随机变量
         print("初始化完成！")
         print("="*60)
         print(f"\n工作目录: {self.workspace_path}")
-        print(f"\n下一步操作（在项目目录内执行）:")
+        print("\n下一步操作（在项目目录内执行）:")
         print(f"  cd {self.workspace_path}")
         print(f"  1. 检测页面类型: python scripts/page-type-detector.py \"{self.url}\"")
         print(f"  2. 网络抓包(DrissionPage): python scripts/drissionpage-capture.py --url \"{self.url}\" --output \"./capture-data\"")
@@ -552,9 +592,66 @@ def main():
         help='项目根目录（默认为当前工作目录）'
     )
 
+    parser.add_argument(
+        '--capture-tool',
+        choices=['drissionpage', 'playwright'],
+        default='drissionpage',
+        help='抓包工具'
+    )
+
+    parser.add_argument(
+        '--browser',
+        choices=['chrome', 'edge', 'chromium', 'firefox'],
+        default='chrome',
+        help='浏览器类型'
+    )
+
+    parser.add_argument(
+        '--browser-data',
+        choices=['project', 'custom'],
+        default='project',
+        help='浏览器数据目录来源'
+    )
+
+    parser.add_argument(
+        '--browser-data-dir',
+        default=None,
+        help='自定义浏览器数据目录'
+    )
+
+    parser.add_argument(
+        '--mode',
+        choices=['headless', 'headed'],
+        default='headless',
+        help='浏览器执行模式'
+    )
+
+    parser.add_argument(
+        '--login',
+        choices=['yes', 'no'],
+        default='no',
+        help='是否需要登录'
+    )
+
+    parser.add_argument(
+        '--languages',
+        default='python',
+        help='SDK语言，逗号分隔，例如 python,javascript'
+    )
+
     args = parser.parse_args()
 
-    initializer = WorkspaceInitializer(args.url, args.project_root)
+    preferences = {
+        "capture_tool": args.capture_tool,
+        "headless": args.mode == 'headless',
+        "browser_type": args.browser,
+        "browser_data_dir": args.browser_data_dir,
+        "use_custom_browser_data": args.browser_data == 'custom',
+        "login_required": args.login == 'yes',
+        "sdk_languages": [language.strip() for language in args.languages.split(',') if language.strip()]
+    }
+
+    initializer = WorkspaceInitializer(args.url, args.project_root, preferences)
     workspace_path = initializer.initialize()
 
     # 输出JSON格式结果供其他脚本调用

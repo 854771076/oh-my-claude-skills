@@ -7,6 +7,7 @@
 ```
 {project_root}/reverse-projects/
 └── {site_name}/                    # 从URL提取的站点名称
+    ├── browser-data/               # 浏览器用户数据目录（可选，免登录抓包）
     ├── capture-data/               # 抓包原始数据
     │   ├── har/                    # HAR格式完整抓包
     │   ├── xhr/                    # XHR/Fetch请求JSON
@@ -20,6 +21,8 @@
     │       ├── encrypt-functions.json
     │       ├── sign-functions.json
     │       └── crypto-keywords.json
+    ├── hook-output/                # Hook拦截分析结果
+    │   └── intercept/
     ├── scripts/                    # 逆向分析脚本（自动复制）
     │   ├── check-environment.py    # 环境检测与自动安装脚本
     │   ├── drissionpage-capture.py # DrissionPage抓包脚本
@@ -29,6 +32,7 @@
     │   ├── page-type-detector.py   # 页面类型检测
     │   ├── crypto-param-detector.py# 加密参数检测
     │   ├── js-search-tool.py       # JS关键词搜索
+    │   ├── webpack-module-extractor.py # Webpack模块提取与依赖追踪
     │   ├── sdk-validator.py        # SDK验证脚本
     │   ├── manual-login.py         # 手动登录脚本
     │   └── output-templates-generator.py # 输出模板生成
@@ -47,7 +51,7 @@
     │       ├── javascript/
     │       └── java/
     └── validation/                 # 验证结果
-        ├── test-results.json       # 测试结果
+        ├── test-results.json       # 测试结果JSON
         └── verify-log.md           # 验证日志
 ```
 
@@ -63,7 +67,30 @@ python .claude/skills/url-analyzer-sdk-gen/scripts/init-workspace.py \
 
 # 初始化后，在项目目录内可直接使用脚本
 cd reverse-projects/{site_name}
+python scripts/check-environment.py --json
 python scripts/drissionpage-capture.py --url "https://example.com/api" --output "./capture-data"
+```
+
+## 推荐初始化后首轮命令
+
+```bash
+cd reverse-projects/{site_name}
+
+# 1. 环境检测
+python scripts/check-environment.py --json
+
+# 2. 页面类型检测
+python scripts/page-type-detector.py "{url}"
+
+# 3. 抓包 + 加密参数识别
+python scripts/drissionpage-capture.py --url "{url}" --output "./capture-data"
+python scripts/crypto-param-detector.py capture-data/xhr/api-requests.json
+
+# 4. JS搜索 + Webpack模块提取
+python scripts/js-search-tool.py --js-dir capture-data/js/ --keywords "encrypt,sign,md5,sha,portal-sign"
+python scripts/webpack-module-extractor.py capture-data/js/app.js --find-sign-func
+python scripts/webpack-module-extractor.py capture-data/js/app.js --extract-module b775
+python scripts/webpack-module-extractor.py capture-data/js/app.js --extract-module a078
 ```
 
 ## 项目配置文件
@@ -73,28 +100,61 @@ python scripts/drissionpage-capture.py --url "https://example.com/api" --output 
 ```json
 {
   "project_info": {
+    "name": "example-api",
     "url": "https://example.com/api",
-    "site_name": "example-api",
-    "created_at": "2026-04-09T10:00:00"
+    "hostname": "example.com",
+    "created_at": "2026-04-29 10:00:00",
+    "status": "initialized"
   },
   "paths": {
     "workspace": "reverse-projects/example-api",
+    "browser_data": "reverse-projects/example-api/browser-data",
+    "capture_data": "reverse-projects/example-api/capture-data",
+    "analysis": "reverse-projects/example-api/analysis",
+    "hook_output": "reverse-projects/example-api/hook-output",
     "scripts": "reverse-projects/example-api/scripts",
     "hooks": "reverse-projects/example-api/hooks",
-    "browser_data": "reverse-projects/example-api/browser-data"
+    "output": "reverse-projects/example-api/output",
+    "validation": "reverse-projects/example-api/validation"
   },
   "scripts": {
+    "environment_checker": "scripts/check-environment.py",
     "drissionpage_capture": "scripts/drissionpage-capture.py",
-    "playwright_capture": "scripts/playwright-capture.js"
+    "playwright_capture": "scripts/playwright-capture.js",
+    "page_type_detector": "scripts/page-type-detector.py",
+    "crypto_detector": "scripts/crypto-param-detector.py",
+    "js_search": "scripts/js-search-tool.py",
+    "webpack_module_extractor": "scripts/webpack-module-extractor.py",
+    "sdk_validator": "scripts/sdk-validator.py"
+  },
+  "analysis_progress": {
+    "environment_checked": false,
+    "page_type_detected": false,
+    "capture_completed": false,
+    "crypto_analyzed": false,
+    "hook_analyzed": false,
+    "reverse_completed": false,
+    "sdk_generated": false,
+    "validation_passed": false
+  },
+  "findings": {
+    "page_type": null,
+    "encrypted_params": [],
+    "crypto_algorithm": null,
+    "sign_logic": null,
+    "key_modules": [],
+    "verification_layers": {
+      "signature_match": false,
+      "real_api_ok": false,
+      "decryption_ok": false
+    }
   },
   "user_preferences": {
     "capture_tool": "drissionpage",
     "headless": true,
     "browser_type": "chrome",
-    "browser_path": null,
     "browser_data_dir": "reverse-projects/example-api/browser-data",
     "use_custom_browser_data": false,
-    "profile_dir": "Default",
     "sdk_languages": ["python"]
   }
 }

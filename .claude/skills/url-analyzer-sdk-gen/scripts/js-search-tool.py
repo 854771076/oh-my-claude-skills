@@ -32,7 +32,7 @@ import sys
 import json
 import re
 import argparse
-import requests
+from curl_cffi import requests
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from datetime import datetime

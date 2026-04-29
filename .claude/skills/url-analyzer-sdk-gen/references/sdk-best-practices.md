@@ -6,6 +6,7 @@
 - 健壮的错误处理
 - 清晰的文档和示例
 - 可维护性和可扩展性
+- 浏览器级TLS指纹伪装（绕过WAF检测）
 
 ## SDK核心组件
 
@@ -19,24 +20,36 @@ class Config:
         self.retry_times = 3
         self.retry_delay = 1.0  # 指数退避基数
         self.max_connections = 10
+        self.browser_impersonation = "chrome"  # curl_cffi 浏览器模拟
 ```
 
 ### 2. 会话管理
-- **必须** 使用Session对象保持连接池
-- **必须** 复用TCP连接，避免每次请求建立新连接
-- **必须** 正确关闭会话释放资源
+
+**⚠️ 默认使用 curl_cffi，不要使用标准 requests 库**
+
+标准 requests 库的TLS指纹特征明显，容易被WAF/Cloudflare拦截。
+curl_cffi 可以模拟真实浏览器的 TLS/JA3 指纹，绕过绝大多数机器人检测。
 
 ```python
-# 正确示例
-session = requests.Session()
+# ✅ 推荐 - 使用 curl_cffi (浏览器TLS指纹模拟)
+from curl_cffi import requests
+
+session = requests.Session(impersonate="chrome")  # 模拟Chrome浏览器
 try:
-    response = session.get(url)
+    response = session.post(url, json=data)
 finally:
     session.close()
 
-# 错误示例 - 每次请求创建新连接
-requests.get(url)  # 不推荐
+# ❌ 不推荐 - 标准 requests (容易被拦截)
+# import requests
+# session = requests.Session()
 ```
+
+**支持的浏览器模拟选项**:
+- `chrome` (推荐) - 最新Chrome浏览器
+- `safari` - Safari浏览器
+- `firefox` - Firefox浏览器
+- `edge101` - Edge浏览器
 
 ### 3. 请求头管理
 **必须包含的请求头**：
